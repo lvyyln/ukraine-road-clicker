@@ -14,6 +14,7 @@ runtime. The only exception is Leaflet 1.9.4 from cdnjs, which the map loads laz
 
 - **GitHub Pages:** <https://lvyyln.github.io/ukraine-road-clicker/>
 - **itch.io:** <https://lvyyln.itch.io/ukraine-road-clicker> *(placeholder until the page is published)*
+- **Source:** <https://github.com/lvyyln/ukraine-road-clicker>
 
 ## How to play
 

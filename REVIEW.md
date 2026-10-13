@@ -32,6 +32,10 @@ Checked and clean:
 - The apostrophe in «з’єднання» is a typographic ’, as are the font aliases ’ ʼ.
 - Place names never reach `innerHTML` unescaped.
 
+## Fix verification
+
+All four owners replied (.team/fixed-{A,B,C,D}.md). C and B fixes were checked in source, plus sanitizeSave edge cases in Node (NaN, v:2, out-of-range distM and fractional levels are rejected or clamped). D's SRI loads were checked in Chrome. A additionally fixed sign/km-post overlap, Kyiv built-up radius and night-light layering. The final smoke test after all fixes passed: page load, gas, fly-through to km 794 («міст через Дніпро»), Вийти, Leaflet map with 45 tiles, and **zero console messages**. The itch zip was rebuilt after the fixes.
+
 ## Data and tooling (DATA's own)
 
 - The route was rebuilt as Ужгород → Львів → Київ → Харків: 1 265.4 km, 126 541 samples, 127 stations, 204 places,
