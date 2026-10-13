@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Дорога України</title>
+<meta name="description" content="Піксельний клікер: подорож справжніми дорогами України з OpenStreetMap і справжнім рельєфом.">
+<meta name="theme-color" content="#0b1626">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/map.css">
+</head>
+<body>
+<div id="app">
+  <header id="hud" aria-label="Показники">
+    <div class="stat" id="st-km"><span class="lbl">Проїхано</span><span class="val"><b id="s-km">0</b> <small id="s-kmtot"></small></span></div>
+    <div class="stat" id="st-next"><span class="lbl">Далі</span><span class="val"><b id="s-next">—</b> <small id="s-nextd"></small></span></div>
+    <div class="stat" id="st-ele"><span class="lbl">Висота</span><span class="val"><b id="s-ele">0 м</b></span></div>
+    <div class="stat money" id="st-money"><span class="lbl">Гроші</span><span class="val"><b id="s-money">0 ₴</b></span></div>
+    <div class="stat" id="st-rate"><span class="lbl">Дохід</span><span class="val"><b id="s-rate">0 ₴/с</b></span></div>
+    <div class="stat" id="st-speed"><span class="lbl">Швидкість</span><span class="val"><b id="s-speed">0 км/год</b></span></div>
+    <div class="stat wide" id="st-veh"><span class="lbl">Транспорт</span><span class="val"><b id="s-veh">—</b></span></div>
+  </header>
+
+  <main id="play">
+    <div id="stage">
+      <canvas id="scene" width="384" height="216" aria-label="Дорога"></canvas>
+      <div id="toasts" aria-live="polite"></div>
+      <div id="hint" hidden><span class="hint-text"></span><button type="button" id="hint-ok" class="btn small">Зрозуміло</button></div>
+      <div id="corner">
+        <button type="button" id="btn-sound" class="icon" data-tip="Увімкнути / вимкнути звук.">🔊</button>
+        <button type="button" id="btn-fs" class="icon" data-tip="Повний екран (ще раз — вийти).">⛶</button>
+      </div>
+      <div id="fly-ui" hidden></div>
+      <div id="loading"><span id="loading-text">Завантаження…</span></div>
+    </div>
+    <canvas id="minimap" width="384" height="28"></canvas>
+
+    <div id="controls">
+      <button type="button" id="gas"><span class="gas-main">Газ!</span><span id="gas-sub">+0 м</span></button>
+      <div id="toolbar">
+        <button type="button" class="btn" id="btn-map" data-tip="Справжня мапа з твоїм маршрутом і позицією.">🗺 Мапа</button>
+        <button type="button" class="btn" id="btn-fly" data-tip="Пролетіти маршрутом і роздивитися краєвиди. Заробіток триває у фоні.">🎥 Проліт</button>
+        <button type="button" class="btn" id="btn-help" data-tip="Коротко про правила гри.">❓ Як грати</button>
+        <button type="button" class="btn danger-outline" id="btn-reset" data-tip="Почати все спочатку (запитає підтвердження).">↺ Скинути</button>
+      </div>
+    </div>
+  </main>
+
+  <aside id="shop">
+    <h2 data-tip="Покращення діють на будь-який транспорт. Ціна кожного рівня зростає.">Покращення</h2>
+    <div id="upgrades"></div>
+    <h2 data-tip="Купуй транспорт по черзі. Новий швидший і більше заробляє за метр.">Транспорт</h2>
+    <div id="vehicles"></div>
+  </aside>
+
+  <footer id="attrib"></footer>
+</div>
+
+<div id="tooltip" role="tooltip" hidden></div>
+<div id="modal" hidden><div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <h2 id="modal-title"></h2><div id="modal-body"></div><div id="modal-actions"></div>
+</div></div>
+<div id="fatal" hidden><h2></h2><pre></pre><p>Спробуй оновити сторінку. Якщо не допоможе — напиши авторам.</p></div>
+<noscript><p class="noscript">Для гри потрібен JavaScript.</p></noscript>
+<script type="module" src="js/game.js"></script>
+</body>
+</html>

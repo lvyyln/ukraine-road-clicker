@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scene test — Дорога України</title>
+<style>
+  html, body { margin: 0; background: #111; color: #ddd; font: 13px system-ui, sans-serif; }
+  #wrap { width: 100%; max-width: 1152px; margin: 0 auto; }
+  #scene { display: block; width: 100%; height: auto; aspect-ratio: 384 / 216; image-rendering: pixelated; image-rendering: crisp-edges; background: #000; }
+  #ui { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; padding: 8px; align-items: center; }
+  input[type=range] { width: 100%; }
+  #info { grid-column: 1 / -1; font-family: monospace; white-space: pre; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="scene" width="384" height="216"></canvas>
+  <div id="ui">
+    <label for="km">км</label><input id="km" type="range" min="0" max="100" step="0.01" value="0"><span id="kmv"></span>
+    <label for="tod">час доби</label><input id="tod" type="range" min="-0.01" max="1" step="0.005" value="-0.01"><span id="todv">авто</span>
+    <label for="spd">швидкість, км/год</label><input id="spd" type="range" min="0" max="3000" step="10" value="90"><span id="spdv"></span>
+    <label><input id="fly" type="checkbox"> летить</label><span></span><span></span>
+    <div id="info">завантаження…</div>
+  </div>
+</div>
+<script type="module">
+import { loadData } from './js/data.js';
+import { createScene } from './js/scene.js';
+import { drawText } from './js/pixelfont.js';
+
+const $ = id => document.getElementById(id);
+const data = await loadData('data/');
+const qs = new URLSearchParams(location.search);
+// ?fake — inject test places/rivers into the scene only (for checking towns/bridges on provisional data)
+let sdata = data;
+if (qs.has('fake')) {
+  const places = [{ km: 2, name: 'Ужгород', type: 'city', pop: 115000 }, { km: 12, name: 'Середнє', type: 'village', pop: 3000 },
+    { km: 20, name: 'Чоп', type: 'town', pop: 9000 }, { km: 40, name: 'Мукачево', type: 'city', pop: 85000 }];
+  const rivers = [{ km: 2.6, name: 'Уж' }, { km: 25, name: 'Дніпро' }, { km: 41, name: 'Латориця' }];
+  sdata = Object.assign({}, data, { places, rivers, placeM: Float64Array.from(places, p => p.km * 1000), riverM: Float64Array.from(rivers, r => r.km * 1000) });
+}
+const scene = createScene($('scene'), sdata);
+$('km').max = (data.lengthM / 1000).toFixed(2);
+let m = qs.has('km') ? +qs.get('km') * 1000 : 0;
+$('km').value = m / 1000;
+if (qs.has('tod')) $('tod').value = qs.get('tod');
+if (qs.has('spd')) $('spd').value = qs.get('spd');
+$('km').oninput = () => { m = +$('km').value * 1000; };
+
+function box(ctx, x, y, env) { // placeholder vehicle: anchor = bottom-centre
+  ctx.fillStyle = '#d23'; ctx.fillRect(x - 14, y - 12, 28, 9);
+  ctx.fillStyle = '#9cf'; ctx.fillRect(x - 8, y - 17, 14, 5);
+  ctx.fillStyle = '#222'; ctx.fillRect(x - 11, y - 3, 5, 3); ctx.fillRect(x + 6, y - 3, 5, 3);
+  if (env.night > 0.4) { ctx.fillStyle = '#ffe9a0'; ctx.fillRect(x + 14, y - 10, 2, 2); }
+}
+
+let last = performance.now(), frames = 0, fpsT = last, fps = 0;
+window.__fps = [];
+function frame(now) {
+  const dt = (now - last) / 1000; last = now;
+  const spd = +$('spd').value / 3.6;
+  m = Math.min(data.lengthM, m + spd * dt);
+  const tod = +$('tod').value;
+  const fly = $('fly').checked;
+  const r = scene.render(m, dt, box, { speedMps: spd, flies: fly, flyAltPx: 50, timeOfDay: tod >= 0 ? tod : undefined });
+  frames++;
+  if (now - fpsT >= 1000) { fps = frames * 1000 / (now - fpsT); window.__fps.push(fps); frames = 0; fpsT = now; }
+  if (frames % 6 === 0) {
+    $('km').value = m / 1000; $('kmv').textContent = (m / 1000).toFixed(2);
+    $('spdv').textContent = $('spd').value; $('todv').textContent = tod >= 0 ? tod.toFixed(3) : 'авто ' + r.timeOfDay.toFixed(3);
+    const p = data.pointAt(m), np = data.nextPlace(m), near = data.placesNear(m, 3000), rv = data.riversNear(m, 1500);
+    $('info').textContent = `lat ${p.lat.toFixed(5)} lon ${p.lon.toFixed(5)} ele ${p.ele.toFixed(0)} м  heading ${p.heading.toFixed(1)}°  grade ${(p.grade * 100).toFixed(1)}%  night ${r.night.toFixed(2)}  fps ${fps.toFixed(0)}\n` +
+      `поруч: ${near.map(q => q.name + ' (' + (q.dM / 1000).toFixed(1) + ')').join(', ') || '—'}   річки: ${rv.map(q => q.name).join(', ') || '—'}   далі: ${np ? np.place.name + ' ' + (np.dM / 1000).toFixed(1) + ' км' : '—'}`;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+window.__scene = { data, scene, setM: v => { m = v; } };
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "ukraine-road-clicker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Clicker road trip across Ukraine on real OpenStreetMap roads and real terrain",
+  "scripts": {
+    "serve": "node tools/serve.mjs",
+    "build-route": "node tools/build-route.mjs",
+    "sim": "node tools/sim-economy.mjs",
+    "package-itch": "node tools/package-itch.mjs"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  }
+}

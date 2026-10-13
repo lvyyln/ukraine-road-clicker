@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мапа · тест (агент D)</title>
+<link rel="stylesheet" href="css/map.css">
+<style>
+  body { margin: 0; background: #0b1626; color: #fff; font: 14px system-ui, sans-serif; }
+  .wrap { max-width: 1152px; margin: 0 auto; padding: 8px; }
+  canvas { image-rendering: pixelated; display: block; width: 100%; }
+  #scene { aspect-ratio: 384 / 216; }
+  #minimap { aspect-ratio: 384 / 24; margin-top: 4px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+  #dist { flex: 1; min-width: 200px; }
+  #stats { font-family: monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="scene" width="384" height="216"></canvas>
+  <canvas id="minimap" width="384" height="24"></canvas>
+  <div id="fly-ui" hidden></div>
+  <div class="row">
+    <button class="ukm-btn" id="btn-map" type="button">Мапа</button>
+    <button class="ukm-btn" id="btn-fly" type="button">Проліт</button>
+    <label><input type="checkbox" id="drive" checked> їхати (500 м/с)</label>
+    <input type="range" id="dist" min="0" max="1" step="0.1" value="0" aria-label="Дистанція гри, км">
+    <span id="stats"></span>
+  </div>
+</div>
+<script type="module">
+  const q = new URLSearchParams(location.search);
+  const [{ loadData }, sceneMod, vehMod, map] = await Promise.all([
+    import('./js/data.js'), import('./js/scene.js'), import('./js/vehicles.js'), import('./js/map.js'),
+  ]);
+  const data = await loadData('data/');
+  const canvas = document.getElementById('scene');
+  const mini = document.getElementById('minimap');
+  const scene = sceneMod.createScene(canvas, data);
+  const V = vehMod.VEHICLES;
+  const car = V.find(v => v.id === 'tavria') || V[0];
+  const drawCar = (ctx, x, y, env) => car.draw(ctx, x, y, env.t, env.speed, env);
+  const distEl = document.getElementById('dist');
+  distEl.max = String(Math.floor(data.lengthM / 100) / 10);
+  let dist = (+q.get('km') || 0) * 1000;
+  distEl.value = String(dist / 1000);
+  distEl.addEventListener('input', () => { dist = +distEl.value * 1000; });
+
+  const m = map.createMap(data, { getDistanceM: () => dist, offline: q.has('offline') });
+  const fly = map.createFlythrough({
+    container: document.getElementById('fly-ui'), canvas, scene, data, vehicles: V,
+    onExit: () => console.log('[D] fly exit'),
+  });
+  document.getElementById('btn-map').onclick = () => m.toggle();
+  document.getElementById('btn-fly').onclick = () => fly.isActive() ? fly.stop() : fly.start(dist / 1000);
+  if (q.has('fly')) fly.start(+q.get('fly') || 0);
+  if (q.has('map')) m.open();
+
+  let last = performance.now(), frames = 0, fpsT = 0, fps = 0, miniT = 0, worst = 0;
+  const stats = document.getElementById('stats');
+  window.__d = { data, m, fly, map, get fps() { return fps; }, get worst() { return worst; }, setDist(v) { dist = v; } };
+  function loop(now) {
+    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    frames++; fpsT += dt; worst = Math.max(worst, dt);
+    if (fly.isActive()) fly.frame(dt);
+    else {
+      if (document.getElementById('drive').checked) dist = Math.min(data.lengthM, dist + 500 * dt);
+      scene.render(dist, dt, drawCar, { speedMps: 500, flies: !!car.flies, flyAltPx: car.flyAltPx || 0 });
+    }
+    miniT += dt;
+    if (miniT > 0.15) {
+      miniT = 0;
+      map.drawMinimap(mini, data, dist);
+      m.update(dist);
+      if (document.activeElement !== distEl) distEl.value = String(Math.floor(dist / 100) / 10);
+    }
+    if (fpsT >= 1) { fps = Math.round(frames / fpsT); stats.textContent = fps + ' fps · км ' + (dist / 1000).toFixed(1); frames = 0; fpsT = 0; }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  console.log('[D] map-test ready', data.meta.from, '→', data.meta.to, (data.lengthM / 1000).toFixed(0) + ' km');
+</script>
+</body>
+</html>

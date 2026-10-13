@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Транспорт — спрайти</title>
+<style>
+  :root { --bg: #1b1d26; --card: #252836; --fg: #e8e6df; --muted: #9a9cab; --acc: #ffd21a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 16px; }
+  .bar button { background: var(--acc); color: #111; border: 0; padding: 6px 12px; font-weight: 600; cursor: pointer; border-radius: 4px; }
+  .bar label { display: flex; gap: 8px; align-items: center; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+  #lineup { width: 100%; max-width: 1152px; border: 1px solid #333; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border-radius: 6px; padding: 10px; }
+  .card canvas { width: 100%; aspect-ratio: 72 / 40; }
+  .name { font-weight: 700; margin-top: 8px; }
+  .blurb { color: var(--muted); font-size: 13px; }
+  .meta { font: 12px ui-monospace, monospace; color: var(--acc); margin-top: 4px; }
+</style>
+</head>
+<body>
+<h1>Транспорт «Дороги України» — попередній перегляд спрайтів</h1>
+<div class="bar">
+  <button id="daynight">Ніч</button>
+  <label>Швидкість <input id="speed" type="range" min="0" max="60" step="0.5" value="8"> <span id="speedv">8</span> м/с</label>
+  <label><input id="pause" type="checkbox"> Пауза</label>
+</div>
+<canvas id="lineup" width="384" height="72" title="Усі в реальному масштабі сцени (384×216)"></canvas>
+<div class="grid" id="grid"></div>
+<script type="module">
+import { VEHICLES } from './js/vehicles.js';
+
+const CW = 72, CH = 40, GROUND = 34;
+const SKY = { day: ['#9fd3f0', '#c8e6f5'], night: ['#0d1028', '#1a1f3e'] };
+let night = 0, speed = 8, paused = false, t = 0, last = performance.now();
+
+const grid = document.getElementById('grid');
+const cards = VEHICLES.map(v => {
+  const card = document.createElement('div'); card.className = 'card';
+  const cv = document.createElement('canvas'); cv.width = CW; cv.height = CH;
+  const name = document.createElement('div'); name.className = 'name'; name.textContent = v.name;
+  const blurb = document.createElement('div'); blurb.className = 'blurb'; blurb.textContent = v.blurb;
+  const meta = document.createElement('div'); meta.className = 'meta';
+  meta.textContent = `${v.id} · ${v.w}×${v.h} px · flies: ${v.flies}${v.flies ? ` (alt ${v.flyAltPx}px)` : ''}`;
+  card.append(cv, name, blurb, meta); grid.append(card);
+  const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false;
+  return { v, ctx };
+});
+const lineup = document.getElementById('lineup').getContext('2d');
+lineup.imageSmoothingEnabled = false;
+
+function backdrop(ctx, w, h, gy, tt) {
+  const s = night > 0.5 ? SKY.night : SKY.day;
+  ctx.fillStyle = s[0]; ctx.fillRect(0, 0, w, gy - 8);
+  ctx.fillStyle = s[1]; ctx.fillRect(0, gy - 8, w, 8);
+  ctx.fillStyle = night > 0.5 ? '#2a2a30' : '#5a5a62'; ctx.fillRect(0, gy, w, h - gy);
+  // dashed centre line scrolling with speed (shows motion)
+  ctx.fillStyle = night > 0.5 ? '#8a8a70' : '#e8e2c0';
+  const off = Math.floor((tt * speed * 2) % 12);
+  for (let x = -off; x < w; x += 12) ctx.fillRect(x, gy + 3, 6, 1);
+}
+
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (!paused) t += dt;
+  const env = { t, speed, night, grade: 0 };
+  for (const { v, ctx } of cards) {
+    backdrop(ctx, CW, CH, GROUND, t);
+    const x = CW >> 1;
+    if (v.flies) {
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(x - (v.w >> 2), GROUND + 1, v.w >> 1, 1); // shadow
+      v.draw(ctx, x, GROUND - 12, t, speed, env);
+    } else v.draw(ctx, x, GROUND, t, speed, env);
+  }
+  // true-scale lineup on one road
+  const LG = 64;
+  backdrop(lineup, 384, 72, LG, t);
+  let lx = 4;
+  for (const v of VEHICLES) {
+    const y = v.flies ? LG - (v.id === 'an225' ? 44 : 22) : LG;
+    v.draw(lineup, lx + (v.w >> 1), y, t, speed, env);
+    lx += v.w - 2;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+document.getElementById('daynight').onclick = e => { night = night > 0.5 ? 0 : 1; e.target.textContent = night ? 'День' : 'Ніч'; };
+const sp = document.getElementById('speed'), spv = document.getElementById('speedv');
+sp.oninput = () => { speed = +sp.value; spv.textContent = sp.value; };
+document.getElementById('pause').onchange = e => { paused = e.target.checked; };
+</script>
+</body>
+</html>
