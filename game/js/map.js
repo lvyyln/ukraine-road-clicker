@@ -533,8 +533,10 @@ export function createFlythrough({ container, canvas, scene, data, vehicles, onE
     if (!dragging && (force || km !== lastKmShown)) ui.range.value = String(km);
     if (force || Math.abs(m - lastPlaceAt) > 400) {
       lastPlaceAt = m;
+      const river = data.riversNear(m, 1000);
       const near = data.placesNear(m, 3000);
-      if (near.length) placeText = near[0].name;
+      if (river.length) placeText = 'міст через ' + river[0].name;
+      else if (near.length) placeText = near[0].name;
       else {
         const nx = data.nextPlace(m);
         placeText = nx ? '→ ' + nx.place.name + ' ' + Math.max(1, Math.round(nx.dM / 1000)) + ' км' : '';

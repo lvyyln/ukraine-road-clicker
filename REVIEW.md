@@ -20,9 +20,9 @@ tiles, and the console has **zero errors**.
 | C4 | C | game.js:374 | nit | town and city both say «Місто» (intended?) | **fixed** («Містечко») |
 | B1 | B | vehicles.js:569 | low | «байдуже на бездоріжжя» is a Russian calque. Use «якому бездоріжжя не страшне» | **fixed** («якому бездоріжжя не страшне») |
 | B2 | B | vehicles.js:314 | nit | ЛуАЗ has no night palette | won't fix — intentional (open-top), now commented |
-| D1 | D | map.js:15-16 | low | Leaflet from cdnjs has no SRI `integrity` | open |
-| D2 | D | map.js:26 | nit | town → «містечко» vs «місто» in game.js | open |
-| A1 | A | data.js:142 | nit | placesNear allocates per hit (fine for current callers) | info |
+| D1 | D | map.js:15-16 | low | Leaflet from cdnjs has no SRI `integrity` | **fixed** (sha512 SRI + crossOrigin, hashes re-verified by D) |
+| D2 | D | map.js:26 | nit | town → «містечко» vs «місто» in game.js | kept — consistent now that game.js says «Містечко» too |
+| A1 | A | data.js:142 | nit | placesNear allocates per hit (fine for current callers) | no change (documented; scene uses its own allocation-free search) |
 
 Checked and clean:
 - Integer drawing everywhere except the documented vehicle tilt.

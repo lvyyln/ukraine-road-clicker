@@ -275,7 +275,7 @@ export function createScene(canvas, data) {
   // ---- world helpers ----
   function placeR(p) { // radius of the built-up area, metres
     const pop = p.pop || 0;
-    if (p.type === 'city') return Math.min(7000, Math.max(2500, Math.sqrt(pop) * 5));
+    if (p.type === 'city') return Math.min(11000, Math.max(2500, Math.sqrt(pop) * 5));
     if (p.type === 'town') return Math.min(2600, Math.max(1100, Math.sqrt(pop) * 9));
     return Math.min(900, Math.max(450, Math.sqrt(pop) * 9));
   }
@@ -669,7 +669,7 @@ export function createScene(canvas, data) {
 
     // nearby places & rivers (no allocation)
     nNear = 0;
-    for (let i = lowerBound(placeM, mCam - 9000); i < placeM.length && placeM[i] < mCam + 9000 && nNear < 64; i++) {
+    for (let i = lowerBound(placeM, mCam - 13000); i < placeM.length && placeM[i] < mCam + 13000 && nNear < 64; i++) {
       if (Math.abs(placeM[i] - mCam) < placeR(places[i]) + 1200) nearP[nNear++] = i;
     }
     nRiv = 0;
