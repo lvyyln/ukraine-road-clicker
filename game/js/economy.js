@@ -114,6 +114,7 @@ export function newState(firstVehicleId = 'bike') {
     vehicle: firstVehicleId, owned: 1,
     up: Object.fromEntries(UPGRADE_IDS.map(id => [id, 0])),
     hints: {}, flags: {}, finished: false, route: null, savedAt: 0,
+    view: 'road',                                      // camera: 'road' (chase cam, default) | 'side'; older saves lack it
   };
 }
 
@@ -144,6 +145,7 @@ export function sanitizeSave(raw, opts) {
     for (const k of ['hints', 'flags']) if (raw[k] && typeof raw[k] === 'object')
       for (const [h, val] of Object.entries(raw[k])) if (val === true) s[k][h] = true;
     s.finished = raw.finished === true;
+    s.view = raw.view === 'side' ? 'side' : 'road';
     s.route = raw.route && typeof raw.route === 'object' ? { from: String(raw.route.from), to: String(raw.route.to), lengthM: +raw.route.lengthM } : null;
     // Route changed → keep money & upgrades, clamp distance.
     const r = opts.route;

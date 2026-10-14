@@ -7,10 +7,14 @@
 // export function drawMinimap(canvas, data, distanceM, opts = {})
 //   Pixel elevation profile of the whole route. The static layers are cached per (data, width, height);
 //   a call is two drawImage + a few fillRect. opts: { labels = true, ticks = true }.
-// export function createFlythrough({ container, canvas, scene, data, vehicles, onExit })
-//   -> { start(km), seek(km), stop(), isActive(), frame(dt) }
+// export function createFlythrough({ container, canvas, scene, data, vehicles, onExit, pickVehicle, view })
+//   -> { start(km), seek(km), stop(), isActive(), frame(dt), positionM() }
 //   Non-saving preview that renders through the same scene object. At the route end it stops at the last km
 //   and pauses (no loop); pressing play there restarts from km 0.
+//   `scene` may be a proxy that forwards to whichever scene is active. Optional:
+//   pickVehicle(mode: 'walk'|'fly') -> { draw(ctx, x, y, env), flies, flyAltPx } is asked every frame, so a
+//   view switch changes the sprite at once; view = { label(), toggle() } adds a «Вид» button (key V).
+// export function createInset(canvas, data) -> { draw(drivenM, markerM) } — the corner map (see below).
 
 const LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
 const LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
@@ -439,7 +443,7 @@ export function drawMinimap(canvas, data, distanceM, opts = {}) {
 // ---------------------------------------------------------------- createFlythrough
 const WALK_MPS = 2000, FLY_MPS = 5000;
 
-export function createFlythrough({ container, canvas, scene, data, vehicles, onExit } = {}) {
+export function createFlythrough({ container, canvas, scene, data, vehicles, onExit, pickVehicle, view } = {}) {
   const list = vehicles || [];
   let ground = null;
   for (const v of list) if (!v.flies) ground = v;            // last ground vehicle = the best one
@@ -449,7 +453,11 @@ export function createFlythrough({ container, canvas, scene, data, vehicles, onE
   let active = false, playing = true, mode = 'walk', m = 0, dragging = false;
   let uiAcc = 0, lastKmShown = -1, lastPlaceAt = -1e9, placeText = '';
   let vehicle = ground;
-  const drawFn = (ctx, x, y, env) => { if (vehicle) vehicle.draw(ctx, x, y, env.t, env.speed, env); };
+  let picked = null;
+  const drawFn = (ctx, x, y, env) => {
+    if (picked) picked.draw(ctx, x, y, env);
+    else if (vehicle) vehicle.draw(ctx, x, y, env.t, env.speed, env);
+  };
   const ropts = { flies: false, flyAltPx: 0, speedMps: 0, showNote: true };
 
   let ui = null, prevHidden = false;
@@ -466,7 +474,10 @@ export function createFlythrough({ container, canvas, scene, data, vehicles, onE
     seg.appendChild(walk); seg.appendChild(fly);
     const read = el('div', 'ukm-fly-read', '');
     const exit = el('button', 'ukm-btn ukm-fly-exit', 'Вийти'); exit.type = 'button';
-    top.appendChild(play); top.appendChild(seg); top.appendChild(read); top.appendChild(exit);
+    const viewBtn = view ? el('button', 'ukm-btn ukm-fly-view', view.label()) : null;
+    top.appendChild(play); top.appendChild(seg);
+    if (viewBtn) { viewBtn.type = 'button'; viewBtn.title = 'Камера: дорога / збоку (V)'; top.appendChild(viewBtn); }
+    top.appendChild(read); top.appendChild(exit);
     const range = el('input', 'ukm-fly-range');
     range.type = 'range'; range.min = '0'; range.max = String(Math.floor(lengthKm * 10) / 10); range.step = '0.1';
     range.setAttribute('aria-label', 'Кілометр маршруту');
@@ -484,6 +495,8 @@ export function createFlythrough({ container, canvas, scene, data, vehicles, onE
     walk.addEventListener('click', onWalk);
     fly.addEventListener('click', onFly);
     exit.addEventListener('click', onExit_);
+    const onView = () => { view.toggle(); viewBtn.textContent = view.label(); };
+    if (viewBtn) viewBtn.addEventListener('click', onView);
     range.addEventListener('input', onInput);
     range.addEventListener('change', onChange);
     range.addEventListener('pointerup', onUp);
@@ -498,11 +511,12 @@ export function createFlythrough({ container, canvas, scene, data, vehicles, onE
       else if (e.key === 'ArrowRight' && t !== range) seekM(m + 10000);
       else if (e.key === 'ArrowLeft' && t !== range) seekM(m - 10000);
       else if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') setMode(mode === 'walk' ? 'fly' : 'walk');
+      else if (viewBtn && (e.key === 'v' || e.key === 'V' || e.key === 'м' || e.key === 'М')) onView();
       else handled = false;
       if (handled) { e.preventDefault(); e.stopImmediatePropagation(); }
     };
     window.addEventListener('keydown', onKey, true);
-    return { root, play, walk, fly, read, range, onKey };
+    return { root, play, walk, fly, read, range, onKey, viewBtn };
   }
 
   function syncButtons() {
@@ -577,6 +591,7 @@ export function createFlythrough({ container, canvas, scene, data, vehicles, onE
       if (container) { container.classList.remove('ukm-fly-on'); container.hidden = prevHidden; }
     },
     isActive() { return active; },
+    positionM() { return m; },
     frame(dt) {
       if (!active) return;
       dt = dt > 0 ? Math.min(dt, 0.1) : 0;
@@ -587,10 +602,149 @@ export function createFlythrough({ container, canvas, scene, data, vehicles, onE
         if (m >= data.lengthM) { m = data.lengthM; playing = false; syncButtons(); }
       }
       ropts.speedMps = moving ? speed : 0;
+      if (pickVehicle) {
+        picked = pickVehicle(mode) || null;
+        if (picked) { ropts.flies = !!picked.flies; ropts.flyAltPx = picked.flies ? (picked.flyAltPx | 0) : 0; }
+      }
+      if (ui && ui.viewBtn) { const t = view.label(); if (ui.viewBtn.textContent !== t) ui.viewBtn.textContent = t; }
       scene.render(m, dt, drawFn, ropts);
       uiAcc += dt;
       if (uiAcc >= 0.1) { uiAcc = 0; updateUi(false); }
     },
   };
   return api;
+}
+
+// ---------------------------------------------------------------- createInset
+// export function createInset(canvas, data) -> { draw(drivenM, markerM = drivenM) }
+//   The small pixel map of Ukraine in the corner of the game picture (like the original game's US map):
+//   borders (mapshape.js), Чорне море, the whole route, the driven part in yellow, the 5 cities and a blinking
+//   marker. Everything static is pre-rendered once; draw() is three drawImage calls plus ~2 px per km driven.
+export const INSET_W = 112, INSET_H = 86;
+const INS = {
+  lon0: 21.8, lat1: 52.6, k: Math.cos(48.5 * Math.PI / 180), s: 9,
+  sea: '#2f5f8f', wave: '#3d70a3', land: '#5b6656', ukr: '#e8dfb8', border: '#22344f',
+  route: '#a8987a', driven: '#ffd500', drivenShadow: '#0057b7',
+  cityDot: '#10203a', cityHi: '#ffffff', label: '#ffffff', labelShadow: '#10203a', seaLabel: '#a9c8e8',
+  marker: '#ff3b30', markerHi: '#ffffff',
+};
+let shapePromise = null;
+function loadShape() {
+  if (!shapePromise) shapePromise = import('./mapshape.js').catch(e => { console.error('mapshape.js', e); return null; });
+  return shapePromise;
+}
+
+export function createInset(canvas, data) {
+  const W = INSET_W, H = INSET_H;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const X = lon => (lon - INS.lon0) * INS.k * INS.s, Y = lat => (INS.lat1 - lat) * INS.s;
+  const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); g.imageSmoothingEnabled = false; return [c, g]; };
+  let base = null, top = null, topGen = -1;
+
+  // route as a 1-px pixel chain with the distance at each pixel
+  const rx = [], ry = [], rm = [];
+  {
+    const STEP = 1000, pts = data.latlngs(STEP);
+    let px = null, py = null;
+    for (let i = 0; i < pts.length; i++) {
+      const x1 = Math.round(X(pts[i][1])), y1 = Math.round(Y(pts[i][0]));
+      if (px === null) { rx.push(x1); ry.push(y1); rm.push(0); px = x1; py = y1; continue; }
+      // Bresenham from (px,py) to (x1,y1), skipping the start pixel
+      let x = px, y = py;
+      const dx = Math.abs(x1 - x), dy = -Math.abs(y1 - y), sx = x < x1 ? 1 : -1, sy = y < y1 ? 1 : -1;
+      let err = dx + dy;
+      const n = Math.max(dx, -dy);
+      for (let k = 1; k <= n; k++) {
+        const e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x += sx; }
+        if (e2 <= dx) { err += dx; y += sy; }
+        rx.push(x); ry.push(y); rm.push(Math.min(data.lengthM, ((i - 1) + k / n) * STEP));
+      }
+      px = x1; py = y1;
+    }
+  }
+
+  function buildBase(shape) {
+    const [c, g] = mk();
+    const mask = rings => {
+      const [mc, mg] = mk();
+      mg.fillStyle = '#fff';
+      for (const r of rings) {
+        mg.beginPath();
+        for (let i = 0; i < r.length; i += 2) { const x = X(r[i] / 100), y = Y(r[i + 1] / 100); i ? mg.lineTo(x, y) : mg.moveTo(x, y); }
+        mg.closePath(); mg.fill();
+      }
+      return mg.getImageData(0, 0, W, H).data;
+    };
+    const uk = shape ? mask(shape.UKRAINE) : null, nb = shape ? mask(shape.NEIGHBOURS) : null;
+    const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+    const C = { sea: hex(INS.sea), wave: hex(INS.wave), land: hex(INS.land), ukr: hex(INS.ukr), border: hex(INS.border) };
+    const img = g.createImageData(W, H), d = img.data;
+    const isU = (x, y) => x >= 0 && y >= 0 && x < W && y < H && uk && uk[(y * W + x) * 4 + 3] >= 128;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      let col;
+      if (isU(x, y)) col = isU(x - 1, y) && isU(x + 1, y) && isU(x, y - 1) && isU(x, y + 1) ? C.ukr : C.border;
+      else if (nb && nb[i + 3] >= 128) col = C.land;
+      else col = (x * 3 + y * 5) % 23 === 0 && y % 4 === 1 ? C.wave : C.sea;
+      d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255;
+    }
+    if (!shape) for (let i = 0; i < d.length; i += 4) { d[i] = C.ukr[0]; d[i + 1] = C.ukr[1]; d[i + 2] = C.ukr[2]; }
+    g.putImageData(img, 0, 0);
+    g.fillStyle = INS.route;
+    for (let i = 0; i < rx.length; i++) g.fillRect(rx[i], ry[i], 1, 1);
+    return c;
+  }
+
+  function buildTop() {
+    const [c, g] = mk();
+    const cities = ((data.meta && data.meta.places) || []).filter(p => p.type === 'city');
+    const used = [];
+    const free = (x, y, w, h) => x >= 0 && y >= 0 && x + w <= W && y + h <= H &&
+      !used.some(u => x < u[0] + u[2] && x + w > u[0] && y < u[1] + u[3] && y + h > u[1]);
+    for (const p of cities) {
+      const q = data.pointAt(p.km * 1000), x = Math.round(X(q.lon)), y = Math.round(Y(q.lat));
+      g.fillStyle = INS.cityDot; g.fillRect(x - 1, y - 1, 3, 3);
+      g.fillStyle = INS.cityHi; g.fillRect(x, y, 1, 1);
+      used.push([x - 1, y - 1, 3, 3]);
+    }
+    if (font) {
+      g.fillStyle = INS.seaLabel;
+      const sx = Math.round(X(34.3)), sy = Math.round(Y(43.55));
+      font.drawText(g, 'Чорне море', sx, sy, INS.seaLabel, { align: 'center' });
+      for (const p of cities) {
+        const q = data.pointAt(p.km * 1000), x = Math.round(X(q.lon)), y = Math.round(Y(q.lat));
+        const tw = font.measureText(p.name), th = 7;
+        const tries = [[x + 3, y - 3], [x - (tw >> 1), y - 9], [x - (tw >> 1), y + 3], [x - tw - 3, y - 3], [x + 3, y - 9], [x + 3, y + 2]];
+        const spot = tries.find(([tx, ty]) => free(tx - 2, ty - 1, tw + 4, th)) || tries[0];
+        used.push([spot[0] - 2, spot[1] - 1, tw + 4, th]);                  // 2-px gap so neighbouring names never touch
+        font.drawText(g, p.name, spot[0], spot[1], INS.label, { shadow: INS.labelShadow });
+      }
+    }
+    return c;
+  }
+
+  let shape = null;
+  loadShape().then(m => { shape = m; base = null; });
+  return {
+    draw(drivenM, markerM = drivenM) {
+      if (!base) base = buildBase(shape);
+      if (!top || topGen !== fontGen) { top = buildTop(); topGen = fontGen; }
+      ctx.drawImage(base, 0, 0);
+      let n = 0;
+      while (n < rx.length && rm[n] <= drivenM) n++;
+      ctx.fillStyle = INS.drivenShadow;
+      for (let i = 0; i < n; i++) ctx.fillRect(rx[i], ry[i] + 1, 1, 1);
+      ctx.fillStyle = INS.driven;
+      for (let i = 0; i < n; i++) ctx.fillRect(rx[i], ry[i], 1, 1);
+      ctx.drawImage(top, 0, 0);
+      const q = data.pointAt(clamp(markerM, 0, data.lengthM)), x = Math.round(X(q.lon)), y = Math.round(Y(q.lat));
+      if ((performance.now() / 400 | 0) % 2) {
+        ctx.fillStyle = INS.markerHi; ctx.fillRect(x - 2, y - 1, 5, 3); ctx.fillRect(x - 1, y - 2, 3, 5);
+        ctx.fillStyle = INS.marker; ctx.fillRect(x - 1, y - 1, 3, 3);
+      } else { ctx.fillStyle = INS.marker; ctx.fillRect(x, y, 1, 1); }
+    },
+  };
 }

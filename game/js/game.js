@@ -27,8 +27,8 @@ window.addEventListener('unhandledrejection', e => softError(e.reason && (e.reas
 async function tryImport(path) {
   try { return { mod: await import(path) }; } catch (e) { console.error('import ' + path, e); return { err: e }; }
 }
-const [mData, mScene, mVeh, mMap, mEco, mBal] = await Promise.all(
-  ['./data.js', './scene.js', './vehicles.js', './map.js', './economy.js', './balance.js'].map(tryImport));
+const [mData, mScene, mVeh, mMap, mEco, mBal, mRoad, mRear] = await Promise.all(
+  ['./data.js', './scene.js', './vehicles.js', './map.js', './economy.js', './balance.js', './road3d.js', './vehicles-rear.js'].map(tryImport));
 
 if (mEco.err || mBal.err) {
   fatal('Не вдалося завантажити економіку гри', (mEco.err || mBal.err).message);
@@ -299,7 +299,8 @@ function showHelp() {
       ['🚌 Транспорт', 'Купуй наступну машину: швидша і прибутковіша. Наприкінці — літаки Ан-2 та «Мрія».'],
       ['🏘 Бонуси', 'Кожне місто, село і міст через річку на шляху дають бонус ₴. Великі міста — більший.'],
       ['🌙 Поки тебе нема', 'Автопілот заробляє і без тебе (половину, до 8 годин).'],
-      ['🗺 Мапа і Проліт', '«Мапа» показує маршрут на справжній мапі, «Проліт» — швидко переглянути всю дорогу. Заробіток іде далі.'],
+      ['🗺 Мапа і Проліт', '«Мапа» показує маршрут на справжній мапі (або торкнись маленької мапи в куті), «Проліт» — швидко переглянути всю дорогу. Заробіток іде далі.'],
+      ['👁 Вид', 'Кнопка 👁 (ліворуч угорі) перемикає камеру: «дорога» — їдеш слідом за транспортом, дорога тікає вдалину; «збоку» — дивишся на подорож збоку. Клавіша V; працює і в «Прольоті».'],
       ['💡 Підказки', 'Наведи мишку або торкнись будь-якого числа чи кнопки (на телефоні — утримуй кнопку).'],
     ];
     const ul = document.createElement('ul'); ul.className = 'help-list';
@@ -554,34 +555,86 @@ const STAT_TIPS = {
   'st-rate': () => `Скільки ₴ ти зараз заробляєш за секунду. Без кліків: ${fmtM(curRates.idleIncomePerS)}/с.`,
   'st-speed': () => `Поточна швидкість. Автопілот ${fmtF(curRates.autoMps)} м/с + помічник ${fmtF(curRates.helperMps)} м/с + твої кліки.`,
   'st-veh': () => `${veh().name}. ${veh().blurb || ''} Купуй новий транспорт у розділі «Транспорт».`,
-  'minimap': () => 'Профіль висот усього маршруту. Позначка — де ти зараз.',
+  'minimap': () => 'Профіль висот усього маршруту. Позначка — де ти зараз. На картинці пагорби перебільшено у 2,5 раза, щоб їх було видно.',
+  'inset': () => 'Мапа України: жовтим — уже проїхана дорога, червона позначка — де ти зараз. Натисни, щоб відкрити велику мапу.',
+  'btn-view': () => `Вид камери: зараз «${VIEW_LABEL[curView] || ''}». Натисни, щоб перемкнути «дорога» / «збоку».`,
   'gas': () => `Газ! Кожне натискання — +${fmtF(curRates.clickM)} м. Також Пробіл або дотик до картинки.`,
 };
 for (const [id, fn] of Object.entries(STAT_TIPS)) { const el = $(id); if (el) { el.dataset.tip = '1'; el._tip = fn; } }
 
-// ---------------------------------------------------------------- scene / map / fly-through
-let scene = null;
-if (mScene.mod && mScene.mod.createScene) {
-  try { scene = mScene.mod.createScene(canvas, data); } catch (e) { console.error('createScene', e); }
+// ---------------------------------------------------------------- scenes: 'road' (forward chase cam) | 'side'
+// Both renderers draw into the same <canvas>; each is created on first use, and switching only resizes the
+// canvas (480×270 vs 384×216 — both 16:9, CSS scales it to the container, pixelated).
+const R3 = mRoad.mod && typeof mRoad.mod.createRoadScene === 'function' ? mRoad.mod : null;
+const SC = mScene.mod && typeof mScene.mod.createScene === 'function' ? mScene.mod : null;
+const REAR = mRear.mod && mRear.mod.REAR && typeof mRear.mod.REAR === 'object' ? mRear.mod.REAR : null;
+if (!R3) console.error('road3d.js unavailable — side view only');
+if (!REAR) console.error('vehicles-rear.js unavailable — side sprites in the road view');
+const VIEW_DIMS = {
+  road: [(R3 && R3.ROAD_W) || 480, (R3 && R3.ROAD_H) || 270],
+  side: [(SC && SC.SCENE_W) || 384, (SC && SC.SCENE_H) || 216],
+};
+const VIEW_LABEL = { road: 'дорога', side: 'збоку' };
+const scenes = {};
+function sceneFor(view) {
+  if (!(view in scenes)) {
+    scenes[view] = null;
+    try {
+      if (view === 'road' && R3) scenes.road = R3.createRoadScene(canvas, data);
+      if (view === 'side' && SC) scenes.side = SC.createScene(canvas, data);
+    } catch (e) { console.error('create ' + view + ' scene', e); scenes[view] = null; }
+  }
+  return scenes[view];
 }
-if (!scene) {
-  console.error('scene.js unavailable — fallback renderer');
-  scene = {
-    render(distM, dt, draw, opts = {}) {
-      const c = ctx2d, gy = 170;
-      c.fillStyle = '#7fb6f0'; c.fillRect(0, 0, 384, gy); c.fillStyle = '#555'; c.fillRect(0, gy, 384, 46);
-      const y = opts.flies ? gy - (opts.flyAltPx || 0) : gy;
-      draw(c, 120, y, { t: performance.now() / 1000, speed: opts.speedMps || 0, night: 0, grade: 0 });
-      return { night: 0, timeOfDay: 0.5, vehicleX: 120, groundY: gy };
-    },
-  };
+const fallbackScene = {
+  render(distM, dt, draw, opts = {}) {
+    const c = ctx2d, W = canvas.width, H = canvas.height, gy = Math.round(H * 0.79);
+    c.fillStyle = '#7fb6f0'; c.fillRect(0, 0, W, gy); c.fillStyle = '#555'; c.fillRect(0, gy, W, H - gy);
+    const x = curView === 'road' ? W >> 1 : Math.round(W * 0.31);
+    const y = opts.flies && curView !== 'road' ? gy - (opts.flyAltPx || 0) : gy;
+    draw(c, x, y, { t: performance.now() / 1000, speed: opts.speedMps || 0, night: 0, timeOfDay: 0.5, steer: 0, grade: 0, view: curView === 'road' ? 'rear' : 'side' });
+    return { night: 0, timeOfDay: 0.5, vehicleX: x, groundY: gy };
+  },
+};
+let curView = null;
+const activeScene = () => scenes[curView] || fallbackScene;
+function applyView(want) {
+  let v = want === 'side' ? 'side' : 'road';
+  if (!sceneFor(v)) { const o = v === 'road' ? 'side' : 'road'; if (sceneFor(o)) v = o; }
+  const [w, h] = VIEW_DIMS[v];
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }   // also needed after a create
+  ctx2d.imageSmoothingEnabled = false;                                                       // (a resize resets it)
+  canvas.style.aspectRatio = w + ' / ' + h;
+  curView = v;
+  document.body.dataset.view = v;
+  const b = $('btn-view');
+  if (b) { b.querySelector('.v-now').textContent = VIEW_LABEL[v]; b.setAttribute('aria-pressed', String(v === 'road')); }
 }
+function toggleView() {
+  if (!(R3 && SC)) { toast('Інший вид зараз недоступний.', '', 2000); return; }
+  state.view = curView === 'road' ? 'side' : 'road';
+  applyView(state.view);
+  // a frame right away, so a paused fly-through or a hidden tab doesn't show a blank resized canvas
+  if (fly && fly.isActive()) fly.frame(0); else renderScene(0);
+}
+// fly-through renders through whichever scene is active
+const sceneProxy = { render: (m, dt, draw, opts) => activeScene().render(m, dt, draw, opts) };
+
 const M = mMap.mod || {};
-let map = null, fly = null;
+let map = null, fly = null, inset = null;
 try { if (M.createMap) map = M.createMap(data, { getDistanceM: () => state.distM }); } catch (e) { console.error('createMap', e); }
 try {
-  if (M.createFlythrough) fly = M.createFlythrough({ container: flyUi, canvas, scene, data, vehicles: VEH, onExit: () => document.body.classList.remove('flying') });
+  if (M.createFlythrough) fly = M.createFlythrough({
+    container: flyUi, canvas, scene: sceneProxy, data, vehicles: VEH, onExit: () => document.body.classList.remove('flying'),
+    pickVehicle: mode => pickFor(mode === 'fly' ? flyerV : groundV()),
+    view: R3 && SC ? { label: () => '👁 ' + VIEW_LABEL[curView], toggle: toggleView } : null,
+  });
 } catch (e) { console.error('createFlythrough', e); }
+try { if (M.createInset) inset = M.createInset($('inset'), data); } catch (e) { console.error('createInset', e); }
+if (!inset) $('inset').hidden = true;
+if (params.get('view') === 'side' || params.get('view') === 'road') state.view = params.get('view');
+applyView(state.view);
+if (!(R3 && SC)) { $('btn-view').disabled = true; $('btn-view').dataset.tip = 'Інший вид зараз недоступний.'; }
 if (!map) { $('btn-map').disabled = true; $('btn-map').dataset.tip = 'Мапа недоступна.'; }
 if (!fly) { $('btn-fly').disabled = true; $('btn-fly').dataset.tip = 'Проліт недоступний.'; }
 
@@ -592,13 +645,41 @@ function startFly(km) {
   try { fly.start(Math.max(0, Math.min(lengthM / 1000, km))); } catch (e) { softError(e); document.body.classList.remove('flying'); }
 }
 const tod = params.has('tod') ? Math.max(0, Math.min(1, +params.get('tod') || 0)) : undefined;
-const drawVehicle = (c, x, y, env) => { const v = veh(); v.draw(c, x, y, env.t, env.speed, env); };
+// vehicle sprite for the active view: rear (REAR[id]) in the road view, side profile (VEHICLES) otherwise
+const rearOf = v => (REAR && REAR[v.id] && typeof REAR[v.id].draw === 'function' ? REAR[v.id] : null);
+function drawAs(v, c, x, y, env) {
+  const r = curView === 'road' ? rearOf(v) : null;
+  if (r) r.draw(c, x, y, env); else v.draw(c, x, y, env.t, env.speed, env);
+}
+function altOf(v) {
+  if (!v.flies) return 0;
+  const r = curView === 'road' ? rearOf(v) : null;
+  return (r && Number.isFinite(r.flyAltPx) ? r.flyAltPx : v.flyAltPx) | 0;
+}
+// fly-through: «Ходьба» = the current ground vehicle (or the best owned one while flying a plane), «Політ» = Ан-225
+const picks = new Map();
+function pickFor(v) {
+  if (!v) return null;
+  let p = picks.get(v);
+  if (!p) { p = { draw: (c, x, y, env) => drawAs(v, c, x, y, env), get flies() { return !!v.flies; }, get flyAltPx() { return altOf(v); } }; picks.set(v, p); }
+  return p;
+}
+const flyerV = VEH.find(v => v.id === 'an225') || [...VEH].reverse().find(v => v.flies) || VEH[VEH.length - 1];
+function groundV() {
+  const v = veh();
+  if (!v.flies) return v;
+  for (let i = Math.min(VEH.length, state.owned) - 1; i >= 0; i--) if (!VEH[i].flies) return VEH[i];
+  return VEH[0];
+}
+const drawVehicle = (c, x, y, env) => drawAs(veh(), c, x, y, env);
+// showNote off: the scenes' «висота ×2.5» corner note would sit under the corner buttons / inset map (the minimap tip says it)
+const sceneOpts = { flies: false, flyAltPx: 0, speedMps: 0, showNote: false };
 let sceneFailed = 0;
 function renderScene(dt) {
   const v = veh();
-  const opts = { flies: !!v.flies, flyAltPx: v.flyAltPx | 0, speedMps: Math.max(0, speedEma) };
-  if (tod !== undefined) opts.timeOfDay = tod;
-  try { scene.render(state.distM, dt, drawVehicle, opts); }
+  sceneOpts.flies = !!v.flies; sceneOpts.flyAltPx = altOf(v); sceneOpts.speedMps = Math.max(0, speedEma);
+  if (tod !== undefined) sceneOpts.timeOfDay = tod;
+  try { activeScene().render(state.distM, dt, drawVehicle, sceneOpts); }
   catch (e) { if (sceneFailed++ < 3) softError(e); }
 }
 
@@ -616,7 +697,17 @@ window.addEventListener('keydown', e => {
   if (!e.repeat) gas();
 });
 $('btn-help').addEventListener('click', showHelp);
-$('btn-map').addEventListener('click', () => { if (map) { map.toggle(); if (map.isOpen()) map.update(state.distM); } });
+function toggleMap() { if (map) { map.toggle(); if (map.isOpen()) map.update(state.distM); } }
+$('btn-map').addEventListener('click', toggleMap);
+$('inset').addEventListener('click', () => { if (map && !map.isOpen()) toggleMap(); });
+$('inset').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); if (map && !map.isOpen()) toggleMap(); } });
+$('btn-view').addEventListener('click', toggleView);
+window.addEventListener('keydown', e => {                // V / М = switch the camera (the fly-through handles it itself)
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1 || !'vVмМ'.includes(e.key)) return;
+  if ((fly && fly.isActive()) || (map && map.isOpen()) || !$('modal').hidden || $('btn-view').disabled) return;
+  if (e.target instanceof Element && e.target.closest('input, textarea, select')) return;
+  toggleView();
+});
 $('btn-fly').addEventListener('click', () => { if (fly && fly.isActive()) { fly.stop(); document.body.classList.remove('flying'); } else startFly(state.distM / 1000); });
 $('btn-reset').addEventListener('click', askReset);
 $('btn-sound').addEventListener('click', () => { state.flags.muted = !state.flags.muted; if (!state.flags.muted) delete state.flags.muted; syncSoundBtn(); });
@@ -687,7 +778,11 @@ function step(dt) {
     else renderScene(dt);
     hudAcc += dt; mmAcc += dt; mapAcc += dt;
     if (hudAcc >= 0.15) { hudAcc = 0; updateHud(); }
-    if (mmAcc >= 0.25 && M.drawMinimap) { mmAcc = 0; try { M.drawMinimap(mm, data, state.distM); } catch (e) { M.drawMinimap = null; softError(e); } }
+    if (mmAcc >= 0.25) {
+      mmAcc = 0;
+      if (M.drawMinimap) { try { M.drawMinimap(mm, data, state.distM); } catch (e) { M.drawMinimap = null; softError(e); } }
+      if (inset) { try { inset.draw(state.distM, fly && fly.isActive() ? fly.positionM() : state.distM); } catch (e) { inset = null; $('inset').hidden = true; softError(e); } }
+    }
     if (mapAcc >= 1 && map && map.isOpen()) { mapAcc = 0; map.update(state.distM); }
   } catch (e) { softError(e && (e.stack || e.message || e)); }
 }
@@ -710,4 +805,4 @@ if (params.has('fly') && fly) startFly(+params.get('fly') || 0);
 
 // small debug/inspection hook (used by integration checks; harmless for players)
 // tick(dt, n) steps the game by hand (rAF is paused in hidden tabs).
-window.__road = { state, data, VEH, save, get rates() { return curRates; }, fly, map, tick(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) step(dt); } };
+window.__road = { state, data, VEH, save, get rates() { return curRates; }, fly, map, get view() { return curView; }, toggleView, tick(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) step(dt); } };

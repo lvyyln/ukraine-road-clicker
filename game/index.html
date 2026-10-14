@@ -6,6 +6,7 @@
 <title>Дорога України</title>
 <meta name="description" content="Піксельний клікер: подорож справжніми дорогами України з OpenStreetMap і справжнім рельєфом.">
 <meta name="theme-color" content="#0b1626">
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/map.css">
 </head>
@@ -23,12 +24,14 @@
 
   <main id="play">
     <div id="stage">
-      <canvas id="scene" width="384" height="216" aria-label="Дорога"></canvas>
+      <canvas id="scene" width="480" height="270" aria-label="Дорога"></canvas>
+      <canvas id="inset" width="112" height="86" role="button" tabindex="0" aria-label="Мапа України — відкрити велику мапу"></canvas>
       <div id="toasts" aria-live="polite"></div>
       <div id="hint" hidden><span class="hint-text"></span><button type="button" id="hint-ok" class="btn small">Зрозуміло</button></div>
       <div id="corner">
         <button type="button" id="btn-sound" class="icon" data-tip="Увімкнути / вимкнути звук.">🔊</button>
         <button type="button" id="btn-fs" class="icon" data-tip="Повний екран (ще раз — вийти).">⛶</button>
+        <button type="button" id="btn-view" class="icon view" aria-pressed="true" aria-label="Вид камери"><span aria-hidden="true">👁</span><span class="v-now">дорога</span></button>
       </div>
       <div id="fly-ui" hidden></div>
       <div id="loading"><span id="loading-text">Завантаження…</span></div>
@@ -39,8 +42,7 @@
       <button type="button" id="gas"><span class="gas-main">Газ!</span><span id="gas-sub">+0 м</span></button>
       <div id="toolbar">
         <button type="button" class="btn" id="btn-map" data-tip="Справжня мапа з твоїм маршрутом і позицією.">🗺 Мапа</button>
-        <button type="button" class="btn" id="btn-fly" data-tip="Пролетіти маршрутом і роздивитися краєвиди. Заробіток триває у фоні.">🎥 Проліт</button>
-        <button type="button" class="btn" id="btn-help" data-tip="Коротко про правила гри.">❓ Як грати</button>
+        <button type="button" class="btn" id="btn-fly" data-tip="Пролетіти маршрутом і роздивитися краєвиди. Заробіток триває у фоні.">🎥 Проліт</button>        <button type="button" class="btn" id="btn-help" data-tip="Коротко про правила гри.">❓ Як грати</button>
         <button type="button" class="btn danger-outline" id="btn-reset" data-tip="Почати все спочатку (запитає підтвердження).">↺ Скинути</button>
       </div>
     </div>

@@ -1,0 +1,14 @@
+{
+  "name": "ukraine-road-pixel-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Free in-house pixelizer + Blender sprite pipeline for «Дорога України»",
+  "license": "UNLICENSED",
+  "scripts": {
+    "pixelize": "node pixelize.mjs",
+    "help": "node pixelize.mjs --help"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  }
+}

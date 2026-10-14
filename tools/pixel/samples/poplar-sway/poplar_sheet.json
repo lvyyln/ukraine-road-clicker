@@ -1,0 +1,37 @@
+{
+  "image": "poplar_sheet.png",
+  "frameWidth": 18,
+  "frameHeight": 55,
+  "cols": 4,
+  "rows": 1,
+  "frames": [
+    {
+      "name": "poplar_side_f00",
+      "x": 0,
+      "y": 0,
+      "w": 18,
+      "h": 55
+    },
+    {
+      "name": "poplar_side_f01",
+      "x": 18,
+      "y": 0,
+      "w": 18,
+      "h": 55
+    },
+    {
+      "name": "poplar_side_f02",
+      "x": 36,
+      "y": 0,
+      "w": 18,
+      "h": 55
+    },
+    {
+      "name": "poplar_side_f03",
+      "x": 54,
+      "y": 0,
+      "w": 18,
+      "h": 55
+    }
+  ]
+}

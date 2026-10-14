@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Drop dev-only test pages
-        run: rm -f game/map-test.html game/scene-test.html game/sprites.html
+        run: rm -f game/map-test.html game/scene-test.html game/sprites.html game/road-test.html game/sprites-rear.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

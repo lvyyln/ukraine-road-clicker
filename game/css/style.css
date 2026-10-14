@@ -32,13 +32,26 @@ button { font: inherit; color: inherit; touch-action: manipulation; -webkit-tap-
 /* ---------------- stage ---------------- */
 #play { display: flex; flex-direction: column; align-items: center; min-width: 0; }
 #stage { position: relative; width: 100%; line-height: 0; background: #000; overflow: hidden; }
-#scene { display: block; width: 100%; height: auto; aspect-ratio: 384 / 216; image-rendering: pixelated; image-rendering: crisp-edges; cursor: pointer; touch-action: manipulation; }
+/* both views are 16:9 (road 480×270, side 384×216); game.js also sets aspect-ratio inline on a view switch */
+#scene { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; image-rendering: pixelated; image-rendering: crisp-edges; cursor: pointer; touch-action: manipulation; }
+/* corner map of Ukraine (top-right, like the original game's small US map); click → big «Мапа» */
+#inset {
+  position: absolute; right: 6px; top: 6px; z-index: 4; width: 22%; height: auto; aspect-ratio: 112 / 86;
+  image-rendering: pixelated; image-rendering: crisp-edges; cursor: pointer; touch-action: manipulation;
+  border: 2px solid rgba(8, 17, 30, .85); border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.45); line-height: 0;
+}
+#inset:hover { border-color: var(--yellow); }
+#inset:focus-visible { outline: 3px solid #4fb3ff; outline-offset: 1px; }
 #minimap { display: block; width: 100%; height: auto; aspect-ratio: 384 / 28; image-rendering: pixelated; image-rendering: crisp-edges; background: #08111e; cursor: help; }
 
 #loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--bg); color: var(--muted); font-size: 18px; line-height: 1.3; }
 #corner { position: absolute; left: 6px; top: 6px; display: flex; flex-direction: column; gap: 6px; z-index: 5; }
 .icon { width: 40px; height: 40px; color: #fff; border-radius: 8px; border: 0; background: rgba(8, 17, 30, .6); font-size: 20px; line-height: 1; cursor: pointer; }
 .icon:hover { background: rgba(8, 17, 30, .85); }
+/* camera toggle: eye + the current view's name under it */
+.icon.view { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 0; font-size: 16px; }
+.icon.view .v-now { font-size: 9px; font-weight: 700; letter-spacing: -.02em; color: var(--yellow); }
+.icon:disabled { opacity: .45; cursor: not-allowed; }
 body.flying #corner, body.flying #hint { display: none; }
 #fly-ui { position: relative; z-index: 6; line-height: 1.3; }   /* below the canvas, never over the road */
 body.flying #controls, body.flying #minimap { display: none; }
@@ -59,7 +72,7 @@ body.flying #toasts { top: 8px; }
 @keyframes popup { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-50px); opacity: 0; } }
 
 #hint {
-  position: absolute; left: 50%; top: 8px; transform: translateX(-50%); z-index: 5; width: min(calc(100% - 110px), 460px);
+  position: absolute; left: 54px; right: calc(22% + 14px); top: 8px; z-index: 5; max-width: 460px;   /* clear of the corner buttons and the inset map */
   display: flex; align-items: center; gap: 10px; padding: 8px 10px; line-height: 1.3;
   background: #fff8d6; color: #1a1a1a; border: 3px solid var(--yellow); border-radius: 8px; box-shadow: 0 4px 0 rgba(0,0,0,.35);
   font-size: 14px; font-weight: 600; animation: tin .3s ease-out;
@@ -168,7 +181,7 @@ dl.stats dd { margin: 0; font-weight: 700; }
   #upgrades { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .toast { font-size: 12px; }
   #hint { font-size: 12px; padding: 6px 8px; gap: 6px; }
-  #toasts { right: 8px; }
+  #toasts { right: calc(22% + 12px); }   /* stay clear of the inset map */
 }
 
 /* ---------------- wide: two columns, no page scroll (fits itch.io iframe) ---------------- */

@@ -13,7 +13,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(ROOT, 'game');
 const OUT = path.join(ROOT, 'dist', 'ukraine-road-clicker-itch.zip');
 const MAX_FILES = 1000, MAX_TOTAL = 500 * 1024 * 1024, MAX_FILE = 200 * 1024 * 1024;
-const SKIP = /^(\..*|Thumbs\.db|desktop\.ini|.*~|.*\.(bak|tmp|swp|log)|.*-test\.html|sprites\.html)$/i;   // dev-only / OS junk
+const SKIP = /^(\..*|Thumbs\.db|desktop\.ini|.*~|.*\.(bak|tmp|swp|log)|.*-test\.html|sprites(-[a-z]+)?\.html)$/i;   // dev-only / OS junk
 
 function die(msg) { console.error('✖ ' + msg); process.exit(1); }
 

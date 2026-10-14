@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Road view test — Дорога України</title>
+<style>
+  html, body { margin: 0; background: #111; color: #ddd; font: 13px system-ui, sans-serif; }
+  #wrap { width: 100%; max-width: 1440px; margin: 0 auto; }
+  #road { display: block; width: 100%; height: auto; aspect-ratio: 480 / 270; image-rendering: pixelated; image-rendering: crisp-edges; background: #000; }
+  #ui { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; padding: 8px; align-items: center; }
+  input[type=range] { width: 100%; }
+  #info { grid-column: 1 / -1; font-family: monospace; white-space: pre; }
+  button, select { font: inherit; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="road" width="480" height="270"></canvas>
+  <div id="ui">
+    <label for="km">км</label><input id="km" type="range" min="0" max="100" step="0.01" value="0"><span id="kmv"></span>
+    <label for="tod">час доби</label><input id="tod" type="range" min="-0.01" max="1" step="0.005" value="-0.01"><span id="todv">авто</span>
+    <label for="spd">швидкість, км/год</label><input id="spd" type="range" min="0" max="3000" step="10" value="90"><span id="spdv"></span>
+    <label for="veh">транспорт</label><select id="veh"></select><span><label><input id="pause" type="checkbox"> пауза</label></span>
+    <span></span><span><button id="bench">заміряти 300 кадрів</button> <button id="go93">км 93</button> <button id="go248">Львів</button> <button id="go794">Дніпро</button></span><span></span>
+    <div id="info">завантаження…</div>
+  </div>
+</div>
+<script type="module">
+// Dev page for the forward road view (js/road3d.js). URL params: ?km= ?tod= (0..1) ?spd= (km/h) ?veh= (REAR id) ?pause
+import { loadData } from './js/data.js';
+import { createRoadScene } from './js/road3d.js';
+
+const $ = id => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+const data = await loadData('data/');
+let REAR = null;
+try { REAR = (await import('./js/vehicles-rear.js')).REAR; } catch (e) { console.warn('vehicles-rear.js unavailable', e); }
+
+const scene = createRoadScene($('road'), data);
+$('km').max = (data.lengthM / 1000).toFixed(2);
+let m = qs.has('km') ? +qs.get('km') * 1000 : 0;
+$('km').value = m / 1000;
+if (qs.has('tod')) $('tod').value = qs.get('tod');
+if (qs.has('spd')) $('spd').value = qs.get('spd');
+if (qs.has('pause')) $('pause').checked = true;
+$('km').oninput = () => { m = +$('km').value * 1000; };
+
+// placeholder rear-view car (used when vehicles-rear.js has no sprite)
+function box(ctx, x, y, env) {
+  const sx = Math.round(env.steer * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x - 26, y - 2, 52, 3);
+  ctx.fillStyle = '#b8282c'; ctx.fillRect(x - 24 + sx, y - 22, 48, 18);
+  ctx.fillStyle = '#7fb0d8'; ctx.fillRect(x - 17 + sx, y - 32, 34, 10);
+  ctx.fillStyle = '#1c1c1e'; ctx.fillRect(x - 24, y - 5, 9, 5); ctx.fillRect(x + 15, y - 5, 9, 5);
+  ctx.fillStyle = env.night > 0.3 ? '#ff4030' : '#a01818'; ctx.fillRect(x - 23 + sx, y - 18, 6, 3); ctx.fillRect(x + 17 + sx, y - 18, 6, 3);
+}
+const vehSel = $('veh');
+vehSel.append(new Option('placeholder', ''));
+if (REAR) for (const id of Object.keys(REAR)) vehSel.append(new Option(id, id));
+if (qs.has('veh')) vehSel.value = qs.get('veh');
+const drawFn = () => { const r = REAR && vehSel.value && REAR[vehSel.value]; return r ? (c, x, y, env) => r.draw(c, x, y, env) : box; };
+
+function opts(spd) {
+  const tod = +$('tod').value;
+  return { speedMps: spd, timeOfDay: tod >= 0 ? tod : undefined };
+}
+let last = performance.now(), frames = 0, fpsT = last, fps = 0;
+function frame(now) {
+  const dt = (now - last) / 1000; last = now;
+  const spd = $('pause').checked ? 0 : +$('spd').value / 3.6;
+  m = Math.min(data.lengthM, m + spd * dt);
+  const r = scene.render(m, dt, drawFn(), opts(spd));
+  frames++;
+  if (now - fpsT >= 1000) { fps = frames * 1000 / (now - fpsT); frames = 0; fpsT = now; }
+  if (frames % 6 === 0) {
+    $('km').value = m / 1000; $('kmv').textContent = (m / 1000).toFixed(2);
+    $('spdv').textContent = $('spd').value; $('todv').textContent = +$('tod').value >= 0 ? (+$('tod').value).toFixed(3) : 'авто ' + r.timeOfDay.toFixed(3);
+    const p = data.pointAt(m), np = data.nextPlace(m), near = data.placesNear(m, 3000), rv = data.riversNear(m, 1500);
+    $('info').textContent = `lat ${p.lat.toFixed(5)} lon ${p.lon.toFixed(5)} ele ${p.ele.toFixed(0)} м  heading ${p.heading.toFixed(1)}°  grade ${(p.grade * 100).toFixed(1)}%  night ${r.night.toFixed(2)}  fps ${fps.toFixed(0)}\n` +
+      `поруч: ${near.map(q => q.name + ' (' + (q.dM / 1000).toFixed(1) + ')').join(', ') || '—'}   річки: ${rv.map(q => q.name).join(', ') || '—'}   далі: ${np ? np.place.name + ' ' + (np.dM / 1000).toFixed(1) + ' км' : '—'}`;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// timing without requestAnimationFrame (works in background tabs): n renders at 1/60 s steps
+function bench(n = 300, spdKmh = 90) {
+  const fn = drawFn(), o = opts(spdKmh / 3.6);
+  for (let i = 0; i < 30; i++) scene.render(m + i * 0.4, 1 / 60, fn, o);      // warm-up (lazy sprites)
+  const t0 = performance.now();
+  for (let i = 0; i < n; i++) scene.render(m + i * spdKmh / 3.6 / 60, 1 / 60, fn, o);
+  const ms = (performance.now() - t0) / n;
+  return +ms.toFixed(3);
+}
+$('bench').onclick = () => { const ms = bench(); $('info').textContent = `bench: ${ms} ms/frame at km ${(m / 1000).toFixed(2)}\n` + $('info').textContent; };
+for (const [id, km] of [['go93', 93], ['go248', 248], ['go794', 794.2]]) $(id).onclick = () => { m = km * 1000; };
+window.__road = { data, scene, bench, setM: v => { m = v; }, getM: () => m };
+</script>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Транспорт ззаду — спрайти</title>
+<style>
+  :root { --bg: #1b1d26; --card: #252836; --fg: #e8e6df; --muted: #9a9cab; --acc: #ffd21a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 12px; }
+  .bar label { display: flex; gap: 8px; align-items: center; }
+  .bar output { font: 12px ui-monospace, monospace; color: var(--acc); min-width: 3em; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+  #scene { width: 100%; max-width: 960px; aspect-ratio: 16 / 9; border: 1px solid #333; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border-radius: 6px; padding: 10px; }
+  .card canvas { width: 100%; aspect-ratio: 180 / 170; }
+  .name { font-weight: 700; margin-top: 8px; }
+  .meta { font: 12px ui-monospace, monospace; color: var(--acc); margin-top: 4px; }
+  #stats { font: 12px ui-monospace, monospace; color: var(--muted); margin: -8px 0 12px; }
+</style>
+</head>
+<body>
+<h1>«Дорога України» — транспорт ззаду (камера позаду)</h1>
+<div class="bar">
+  <label>Ніч <input id="night" type="range" min="0" max="1" step="0.01" value="0"> <output id="nightv">0</output></label>
+  <label>Кермо <input id="steer" type="range" min="-1" max="1" step="0.05" value="0"> <output id="steerv">0</output></label>
+  <label>Швидкість <input id="speed" type="range" min="0" max="40" step="0.5" value="8"> <output id="speedv">8</output> м/с</label>
+  <label><input id="wobble" type="checkbox"> Кермо гойдається</label>
+  <label><input id="pause" type="checkbox"> Пауза</label>
+</div>
+<canvas id="scene" width="480" height="270" title="Справжній масштаб: полотно гри 480×270"></canvas>
+<div id="stats"></div>
+<div class="grid" id="grid"></div>
+<script type="module">
+import { REAR } from './js/vehicles-rear.js';
+
+const NAMES = {
+  bike: 'Велосипед «Україна»', moped: 'Мопед «Карпати»', zaz965: 'ЗАЗ-965 «Горбатий»', zaz968m: 'ЗАЗ-968М «Вухатий»',
+  tavria: 'ЗАЗ-1102 «Таврія»', luaz: 'ЛуАЗ-969 «Волинь»', laz695: 'Автобус ЛАЗ-695', bogdan: 'Маршрутка Богдан А092',
+  kraz: 'КрАЗ-6322', electron: 'Електробус «Електрон»', an2: 'Ан-2 «Кукурузник»', an225: 'Ан-225 «Мрія»',
+};
+const $ = id => document.getElementById(id);
+const CW = 180, CH = 170, GY = 162;
+const ids = Object.keys(REAR);
+const env = { night: 0, timeOfDay: 12, t: 0, speed: 8, steer: 0, grade: 0, view: 'rear' };
+let paused = false, last = performance.now();
+
+const cards = ids.map(id => {
+  const r = REAR[id];
+  const card = document.createElement('div'); card.className = 'card';
+  const cv = document.createElement('canvas'); cv.width = CW; cv.height = CH;
+  const name = document.createElement('div'); name.className = 'name'; name.textContent = NAMES[id] || id;
+  const meta = document.createElement('div'); meta.className = 'meta';
+  meta.textContent = `${id} · ${r.w}×${r.h} px${r.flyAltPx ? ` · flyAltPx ${r.flyAltPx}` : ''}`;
+  card.append(cv, name, meta); $('grid').append(card);
+  const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false;
+  return { id, r, ctx };
+});
+const scene = $('scene').getContext('2d'); scene.imageSmoothingEnabled = false;
+
+// A cheap perspective road so the sprites can be judged in context.
+function road(ctx, w, h, horizon, gy, t, roadHalf) {
+  const n = env.night, mix = (a, b) => `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * n)).join(',')})`;
+  ctx.fillStyle = mix([150, 205, 235], [12, 16, 40]); ctx.fillRect(0, 0, w, horizon);
+  ctx.fillStyle = mix([110, 150, 70], [20, 32, 22]); ctx.fillRect(0, horizon, w, h - horizon);
+  const cx = w >> 1, dash = (t * env.speed * 0.6) % 1;
+  for (let y = horizon; y < h; y++) {
+    const f = (y - horizon) / (gy - horizon + 8), hw = Math.max(1, Math.round(roadHalf * f));
+    ctx.fillStyle = mix([96, 96, 104], [34, 34, 40]); ctx.fillRect(cx - hw, y, hw * 2, 1);
+    ctx.fillStyle = mix([230, 230, 220], [90, 90, 84]); ctx.fillRect(cx - hw, y, 1, 1); ctx.fillRect(cx + hw - 1, y, 1, 1);
+    const z = 1 / Math.max(0.02, f);                              // depth → dashed centre line
+    if (((z * 0.25 + dash) % 1) < 0.5 && f > 0.02) ctx.fillRect(cx, y, Math.max(1, Math.round(f * 2)), 1);
+  }
+}
+
+let cost = 0, frames = 0;
+function frame(now) {
+  const dt = Math.max(0, Math.min(0.1, (now - last) / 1000)); last = now;
+  if (!paused) env.t += dt;
+  if ($('wobble').checked) { env.steer = Math.round(Math.sin(env.t * 0.8) * 20) / 20; $('steer').value = env.steer; $('steerv').value = env.steer.toFixed(2); }
+  for (const { r, ctx } of cards) {
+    road(ctx, CW, CH, 60, GY, env.t, 100);
+    r.draw(ctx, CW >> 1, GY, env);
+  }
+  // true-scale scene: player vehicle at the bottom centre, the others queued further up the road
+  road(scene, 480, 270, 100, 256, env.t, 240);
+  const t0 = performance.now();
+  const sel = cards[Math.floor(env.t / 3) % cards.length].r;
+  sel.draw(scene, 240, 256, env);
+  cost += performance.now() - t0; frames++;
+  if (frames === 60) { $('stats').textContent = `draw() cost (player vehicle, 480×270): ${(cost / 60).toFixed(3)} ms/frame avg`; cost = 0; frames = 0; }
+  requestAnimationFrame(frame);
+}
+for (const k of ['night', 'steer', 'speed']) {
+  const el = $(k);
+  el.addEventListener('input', () => { env[k] = +el.value; $(k + 'v').value = el.value; });
+}
+$('pause').addEventListener('change', e => { paused = e.target.checked; });
+// URL state for screenshots: ?night=1&steer=0.5&speed=8&t=2.3&pause=1
+const q = new URLSearchParams(location.search);
+for (const k of ['night', 'steer', 'speed']) if (q.has(k)) { env[k] = +q.get(k); $(k).value = env[k]; $(k + 'v').value = env[k]; }
+if (q.has('t')) env.t = +q.get('t');
+if (q.has('cols')) $('grid').style.gridTemplateColumns = `repeat(${+q.get('cols')}, 1fr)`;
+if (q.has('only')) for (const c of cards) if (!q.get('only').split(',').includes(c.id)) c.ctx.canvas.parentNode.remove();
+if (q.has('only')) { $('scene').style.display = 'none'; $('stats').style.display = 'none'; }
+if (q.get('pause') === '1') { paused = true; $('pause').checked = true; }
+// ?sheet=1 → every vehicle at once on one tight canvas, scaled up (for close inspection / screenshots)
+if (q.get('sheet') === '1') {
+  document.querySelectorAll('.grid,#scene,#stats').forEach(el => { el.style.display = 'none'; });
+  const sc = document.createElement('canvas'); sc.width = 420; sc.height = 345; sc.style.width = '100%';
+  document.body.append(sc);
+  const sx = sc.getContext('2d'); sx.imageSmoothingEnabled = false;
+  const ROWS = [[56, ['bike', 'moped', 'zaz965', 'zaz968m', 'tavria', 'luaz']], [140, ['laz695', 'bogdan', 'kraz', 'electron']], [338, ['an2', 'an225']]];
+  const sheet = () => {
+    const n = env.night, c = (a, b) => `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * n)).join(',')})`;
+    sx.fillStyle = c([150, 205, 235], [12, 16, 40]); sx.fillRect(0, 0, 420, 345);
+    for (const [gy, list] of ROWS) {
+      sx.fillStyle = c([96, 96, 104], [34, 34, 40]); sx.fillRect(0, gy - 4, 420, 10);
+      let x = 8;
+      for (const id of list) { const r = REAR[id]; r.draw(sx, x + (r.w >> 1), gy, env); x += r.w + (list.length > 4 ? 18 : 30); }
+    }
+    requestAnimationFrame(sheet);
+  };
+  requestAnimationFrame(sheet);
+}
+// ?bench=1 → time 500 draws of each vehicle (night, steering, moving) and print µs/draw into #stats
+if (q.get('bench') === '1') {
+  const benv = { night: 1, timeOfDay: 22, t: 0, speed: 12, steer: 0.6, grade: 0, view: 'rear' }, out = [];
+  for (const id of ids) {
+    REAR[id].draw(scene, 240, 256, benv);                         // bake outside the timing
+    const t0 = performance.now();
+    for (let i = 0; i < 500; i++) { benv.t = i / 60; REAR[id].draw(scene, 240, 256, benv); }
+    out.push(`${id} ${((performance.now() - t0) / 500 * 1000).toFixed(1)}µs`);
+  }
+  $('stats').textContent = 'bench: ' + out.join(' · ');
+} else requestAnimationFrame(frame);
+// for automated checks
+window.__rear = { env, REAR, setT(t) { env.t = t; } };
+</script>
+</body>
+</html>
